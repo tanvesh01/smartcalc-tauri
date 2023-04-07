@@ -2,14 +2,12 @@
   <img src="assets/smartcalc.png" alt="SmartCalc" width="150" height="150" />
 </p>
 
+# SmartCalc ![Build Status](https://github.com/tanvesh01/smartcalc-tauri/actions/workflows/build_and_test.yml/badge.svg)
 
-# SmartCalc ![Build Status](https://github.com/erhanbaris/smartcalc/actions/workflows/build_and_test.yml/badge.svg)
-
-
- It is new way to do calculate on-fly. Do your calculation on text based queries and see the result immediately. Still it is under development but it is enough to use it on daily purpose. Supports money conversion, percentage calculation and basis time calculation but still not fully supported. For now, we support only in english language but if any want to help to translate, we can easily integrate new language.
-
+It is new way to do calculate on-fly. Do your calculation on text based queries and see the result immediately. Still it is under development but it is enough to use it on daily purpose. Supports money conversion, percentage calculation and basis time calculation but still not fully supported. For now, we support only in english language but if any want to help to translate, we can easily integrate new language.
 
 ## Why SmartCalc?
+
 You can download the application or you can use it on the web. If you want you can integrate into your own product and it is totally free. Supports multiple type to do dailly basic calculation based on requirements.
 **SmartCalc** helps long-term calculation based on your requirements and real-world problems and simplifies to use it in the text. If you want to buy a house and you don't know how much money you need to save for initial payment, you can do it very easily at **SmartCalc**. Or you can just do a simple calculations of how old you are.
 
@@ -29,22 +27,23 @@ smartcalc = "1"
 ```
 
 ## Binaries
-Desktop binaries are located under [Releases](https://github.com/erhanbaris/smartcalc/releases) section, also you can use [web application](https://erhanbaris.github.io/smartcalc-app/).
 
-You can check the [SmartCalc-App](https://github.com/erhanbaris/smartcalc-app) repository for application source codes.
+Desktop binaries are located under [Releases](https://github.com/tanvesh01/smartcalc-tauri/releases) section, also you can use [web application](https://erhanbaris.github.io/smartcalc-app/).
+
+You can check the [SmartCalc-App](https://github.com/tanvesh01/smartcalc-tauri-app) repository for application source codes.
 
 ## Supported operations
 
 ### Money
-Has a 162 different currency support internally and conversions between two currency.
 
+Has a 162 different currency support internally and conversions between two currency.
 
 <p align="center">
   <img src="assets/show-2.gif" alt="SmartCalc" width="450" />
 </p>
 
-
 ### Number
+
 You can do normal mathematical calculation with SmartCalc
 
 ```
@@ -58,6 +57,7 @@ You can do normal mathematical calculation with SmartCalc
 ```
 
 Also support percentage calculation.
+
 ```
 10% of 200    |  20
 10% off 200   | 180
@@ -65,7 +65,9 @@ Also support percentage calculation.
 120 + 10%     | 132
 500 - 30%     | 350
 ```
+
 Percentage calculation applied to currencies.
+
 ```
 10% of 200 try    | ₺20,00
 10% off 200 try   | ₺180,00
@@ -75,13 +77,16 @@ Percentage calculation applied to currencies.
 ```
 
 The system supports a little bit of complex calculation like
+
 ```
 15.5 is what % of 1100   |   %14.09
 180 is 10% of what       |   1.800
 ```
 
 ### Date, Time and Timezone
+
 Dynamically date and time calculation supported. If you want to do count days or diff dates, it is very easy now. Also, timezone conversion are supported.
+
 ```
 today                    |   15 February
 tomorrow                 |   16 February
@@ -95,6 +100,7 @@ tomorrow + 3 weeks       |    9 March
 ```
 
 Unix timestamp conversion is very easily.
+
 ```
 1646401747 to date      | 4 March 14:49:07 CET
 1 oct 2022 as unix      | 1664582400
@@ -103,7 +109,9 @@ x to UTC                | 1 October 00:00:00 UTC
 ```
 
 ### Memory
+
 You can also do computer memory unit calculations.
+
 ```
 1024 mb                  |   1.024MB
 1 megabyte               |   1MB
@@ -111,12 +119,14 @@ You can also do computer memory unit calculations.
 ```
 
 Also, abbreviation supported for all number types.
+
 ```
 $1k                      |   $1,000.00
 1M + 1k                  |   1.001.000
 ```
 
-### Number Type Conversion 
+### Number Type Conversion
+
 Programmers can convert numbers from one type to another type.
 Here is the supported types:
 
@@ -125,7 +135,7 @@ Here is the supported types:
 - Decimal
 - Binary
 
-To use all number types except hexa, you must use the type's name. Since the word hexadecimal is long,  hex  word can be used.
+To use all number types except hexa, you must use the type's name. Since the word hexadecimal is long, hex word can be used.
 
 ```
 10 hex                   |   0xA
@@ -135,7 +145,8 @@ data = 10 hex            |   0xA
 data decimal             |   10
 ```
 
-### Length and Weight Conversion 
+### Length and Weight Conversion
+
 Metric and Imperial units(some of them) conversion supports. You can convert one to other type easily.
 
 ```
@@ -147,7 +158,9 @@ Metric and Imperial units(some of them) conversion supports. You can convert one
 ```
 
 ### Variable definition
+
 You can store information in variable and use it again in formulas.
+
 ```
 gross salary = 100k dkk           | 100.000,00 kr.
 net salary   = gross salary - %40 |  60.000,00 kr.

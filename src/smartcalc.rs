@@ -4,47 +4,50 @@
  * Licensed under the GNU General Public License v2.0.
  */
 
-use core::borrow::Borrow;
-use core::ops::Deref;
+use crate::tokinizer::{read_currency, small_date, RuleType};
+use crate::{Session, TimeOffset};
 use alloc::collections::BTreeMap;
-use alloc::vec;
-use alloc::vec::Vec;
 use alloc::rc::Rc;
 use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
 use anyhow::anyhow;
-use crate::{Session, TimeOffset};
-use crate::tokinizer::{read_currency, RuleType, small_date};
+use core::borrow::Borrow;
+use core::ops::Deref;
 
 use crate::compiler::Interpreter;
-use crate::logger::{LOGGER, initialize_logger};
+use crate::config::{DynamicType, SmartCalcConfig};
+use crate::formatter::format_result;
+use crate::logger::{initialize_logger, LOGGER};
 use crate::syntax::SyntaxParser;
 use crate::token::ui_token::UiToken;
 use crate::tokinizer::TokenInfo;
 use crate::tokinizer::Tokinizer;
 use crate::tools::parse_timezone;
-use crate::types::{TokenType, ExpressionFunc};
 use crate::types::SmartCalcAstType;
-use crate::formatter::format_result;
-use crate::config::{SmartCalcConfig, DynamicType};
+use crate::types::{ExpressionFunc, TokenType};
 
 pub type ExecutionLine = Option<ExecuteLine>;
 
 pub trait RuleTrait {
     fn name(&self) -> String;
-    fn call(&self, smartcalc: &SmartCalcConfig, fields: &BTreeMap<String, TokenType>) -> Option<TokenType>;
+    fn call(
+        &self,
+        smartcalc: &SmartCalcConfig,
+        fields: &BTreeMap<String, TokenType>,
+    ) -> Option<TokenType>;
 }
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ExecuteResult {
     pub status: bool,
-    pub lines: Vec<ExecutionLine>
+    pub lines: Vec<ExecutionLine>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ExecuteLineResult {
     pub output: String,
-    pub ast: Rc<SmartCalcAstType>
+    pub ast: Rc<SmartCalcAstType>,
 }
 
 impl ExecuteLineResult {
@@ -58,37 +61,55 @@ pub struct ExecuteLine {
     pub result: Result<ExecuteLineResult, String>,
     pub raw_tokens: Vec<Rc<TokenType>>,
     pub ui_tokens: Vec<UiToken>,
-    pub calculated_tokens: Vec<Rc<TokenInfo>>
+    pub calculated_tokens: Vec<Rc<TokenInfo>>,
 }
 
 impl ExecuteLine {
-    pub fn new(result: Result<ExecuteLineResult, String>, ui_tokens: Vec<UiToken>, raw_tokens: Vec<Rc<TokenType>>, calculated_tokens: Vec<Rc<TokenInfo>>) -> Self {
-        ExecuteLine { result, ui_tokens, raw_tokens, calculated_tokens }
+    pub fn new(
+        result: Result<ExecuteLineResult, String>,
+        ui_tokens: Vec<UiToken>,
+        raw_tokens: Vec<Rc<TokenType>>,
+        calculated_tokens: Vec<Rc<TokenInfo>>,
+    ) -> Self {
+        ExecuteLine {
+            result,
+            ui_tokens,
+            raw_tokens,
+            calculated_tokens,
+        }
     }
 }
 
 pub struct SmartCalc {
-    config: SmartCalcConfig
+    config: SmartCalcConfig,
 }
+
+unsafe impl Send for SmartCalc {}
 
 impl Default for SmartCalc {
     fn default() -> Self {
         initialize_logger();
         let mut smartcalc = SmartCalc {
-            config: SmartCalcConfig::default()
+            config: SmartCalcConfig::default(),
         };
-        smartcalc.set_date_rule("en", vec![
-            "{MONTH:month} {NUMBER:day}, {NUMBER:year}".to_string(),
-            "{MONTH:month} {NUMBER:day} {NUMBER:year}".to_string(),
-            "{NUMBER:day}/{NUMBER:month}/{NUMBER:year}".to_string(),
-            "{NUMBER:day} {MONTH:month} {NUMBER:year}".to_string(),
-            "{NUMBER:day} {MONTH:month}".to_string()
-        ]);
-        smartcalc.set_date_rule("tr", vec![
-            "{NUMBER:day}/{NUMBER:month}/{NUMBER:year}".to_string(),
-            "{NUMBER:day} {MONTH:month} {NUMBER:year}".to_string(),
-            "{NUMBER:day} {MONTH:month}".to_string()
-        ]);
+        smartcalc.set_date_rule(
+            "en",
+            vec![
+                "{MONTH:month} {NUMBER:day}, {NUMBER:year}".to_string(),
+                "{MONTH:month} {NUMBER:day} {NUMBER:year}".to_string(),
+                "{NUMBER:day}/{NUMBER:month}/{NUMBER:year}".to_string(),
+                "{NUMBER:day} {MONTH:month} {NUMBER:year}".to_string(),
+                "{NUMBER:day} {MONTH:month}".to_string(),
+            ],
+        );
+        smartcalc.set_date_rule(
+            "tr",
+            vec![
+                "{NUMBER:day}/{NUMBER:month}/{NUMBER:year}".to_string(),
+                "{NUMBER:day} {MONTH:month} {NUMBER:year}".to_string(),
+                "{NUMBER:day} {MONTH:month}".to_string(),
+            ],
+        );
         smartcalc
     }
 }
@@ -98,50 +119,92 @@ impl SmartCalc {
         match self.config.types.get(name.borrow()) {
             Some(_) => false,
             None => {
-                self.config.types.insert(name.borrow().to_string(), BTreeMap::new());
+                self.config
+                    .types
+                    .insert(name.borrow().to_string(), BTreeMap::new());
                 true
             }
         }
     }
-    
-    pub fn add_dynamic_type_item<T: Borrow<str>>(&mut self, name: T, index: usize, format: T, parse: Vec<T>, upgrade_code: T, downgrade_code: T, names:Vec<String>, decimal_digits: Option<u8>, use_fract_rounding: Option<bool>, remove_fract_if_zero: Option<bool>) -> bool {
+
+    pub fn add_dynamic_type_item<T: Borrow<str>>(
+        &mut self,
+        name: T,
+        index: usize,
+        format: T,
+        parse: Vec<T>,
+        upgrade_code: T,
+        downgrade_code: T,
+        names: Vec<String>,
+        decimal_digits: Option<u8>,
+        use_fract_rounding: Option<bool>,
+        remove_fract_if_zero: Option<bool>,
+    ) -> bool {
         match self.config.types.get(name.borrow()) {
             Some(dynamic_type) => {
                 if dynamic_type.contains_key(&index) {
                     return false;
                 }
-            },
-            None => return false
+            }
+            None => return false,
         };
-            
+
         let mut parse_tokens = Vec::new();
         for type_parse_item in parse.iter() {
             let mut session = Session::new();
             session.set_language("en".to_string());
             session.set_text(type_parse_item.borrow().to_string());
-            
+
             let tokens = Tokinizer::token_infos(&self.config, &session);
             parse_tokens.push(tokens);
         }
-        
-        if let Some(dynamic_type) = self.config.types.get_mut(name.borrow()) {            
-            dynamic_type.insert(index, Rc::new(DynamicType::new(name.borrow().to_string(), index, format.borrow().to_string(), parse_tokens, upgrade_code.borrow().to_string(), downgrade_code.borrow().to_string(), names, decimal_digits, use_fract_rounding, remove_fract_if_zero)));
+
+        if let Some(dynamic_type) = self.config.types.get_mut(name.borrow()) {
+            dynamic_type.insert(
+                index,
+                Rc::new(DynamicType::new(
+                    name.borrow().to_string(),
+                    index,
+                    format.borrow().to_string(),
+                    parse_tokens,
+                    upgrade_code.borrow().to_string(),
+                    downgrade_code.borrow().to_string(),
+                    names,
+                    decimal_digits,
+                    use_fract_rounding,
+                    remove_fract_if_zero,
+                )),
+            );
         }
         true
     }
-    
-    pub fn set_money_configuration(&mut self, remove_fract_if_zero: bool, use_fract_rounding: bool) {
+
+    pub fn set_money_configuration(
+        &mut self,
+        remove_fract_if_zero: bool,
+        use_fract_rounding: bool,
+    ) {
         self.config.money_config.remove_fract_if_zero = remove_fract_if_zero;
         self.config.money_config.use_fract_rounding = use_fract_rounding;
     }
-    
-    pub fn set_number_configuration(&mut self, decimal_digits: u8, remove_fract_if_zero: bool, use_fract_rounding: bool) {
+
+    pub fn set_number_configuration(
+        &mut self,
+        decimal_digits: u8,
+        remove_fract_if_zero: bool,
+        use_fract_rounding: bool,
+    ) {
         self.config.number_config.decimal_digits = decimal_digits;
         self.config.number_config.remove_fract_if_zero = remove_fract_if_zero;
         self.config.number_config.use_fract_rounding = use_fract_rounding;
     }
-    
-    pub fn set_percentage_configuration(&mut self, decimal_digits: u8, remove_fract_if_zero: bool, use_fract_rounding: bool) {
+
+    pub fn set_percentage_configuration(
+        &mut self,
+        decimal_digits: u8,
+        remove_fract_if_zero: bool,
+        use_fract_rounding: bool,
+    ) {
         self.config.percentage_config.decimal_digits = decimal_digits;
         self.config.percentage_config.remove_fract_if_zero = remove_fract_if_zero;
         self.config.percentage_config.use_fract_rounding = use_fract_rounding;
@@ -150,12 +213,12 @@ impl SmartCalc {
     pub fn set_decimal_seperator(&mut self, decimal_seperator: String) {
         self.config.decimal_seperator = decimal_seperator;
     }
-    
+
     pub fn set_thousand_separator(&mut self, thousand_separator: String) {
         self.config.thousand_separator = thousand_separator;
     }
-    
-    pub fn set_date_rule(&mut self, language: &str, rules: Vec<String>) {                
+
+    pub fn set_date_rule(&mut self, language: &str, rules: Vec<String>) {
         let mut function_items = Vec::new();
         for rule_item in rules {
             let mut session = Session::new();
@@ -163,10 +226,10 @@ impl SmartCalc {
             session.set_text(rule_item.to_string());
             function_items.push(Tokinizer::token_infos(&self.config, &session));
         }
-        
+
         let current_rules = match self.config.rule.get_mut(language) {
             Some(current_rules) => current_rules,
-            None => return
+            None => return,
         };
 
         /* Remove small_date rule */
@@ -176,49 +239,49 @@ impl SmartCalc {
             } else {
                 false
             };
-            
+
             !is_small_date
         });
-        
+
         current_rules.push(RuleType::Internal {
             function_name: "small_date".to_string(),
             function: small_date as ExpressionFunc,
-            tokens_list: function_items
+            tokens_list: function_items,
         });
     }
-    
+
     pub fn set_timezone(&mut self, timezone: String) -> Result<(), String> {
         let timezone = match self.config.token_parse_regex.get("timezone") {
             Some(regexes) => {
                 let capture = match regexes[0].captures(&timezone) {
                     Some(capture) => capture,
-                    None => return Err("Timezone information not found".to_string())
+                    None => return Err("Timezone information not found".to_string()),
                 };
                 match capture.name("timezone") {
                     Some(_) => parse_timezone(&self.config, &capture),
-                    None => None
+                    None => None,
                 }
-            },
-            _ => None
+            }
+            _ => None,
         };
-        
+
         match timezone {
             Some((timezone, offset)) => {
                 self.config.timezone = timezone.to_uppercase();
                 self.config.timezone_offset = offset;
                 Ok(())
-            },
-            None => Err("Timezone information not found".to_string())
+            }
+            None => Err("Timezone information not found".to_string()),
         }
     }
 
     pub fn get_time_offset(&self) -> TimeOffset {
         self.config.get_time_offset()
     }
-    
+
     pub fn load_from_json(json_data: &str) -> Self {
         SmartCalc {
-            config: SmartCalcConfig::load_from_json(json_data)
+            config: SmartCalcConfig::load_from_json(json_data),
         }
     }
 
@@ -227,34 +290,42 @@ impl SmartCalc {
             Some(real_currency) => {
                 self.config.currency_rate.insert(real_currency, rate);
                 true
-            },
-             _ => false
+            }
+            _ => false,
         }
     }
-    
+
     pub fn delete_rule(&mut self, language: String, rule_name: String) -> bool {
         match self.config.rule.get_mut(&language) {
             Some(language_collection) => {
                 let position = language_collection.iter().position(|item| match item {
-                    RuleType::API { tokens_list: _, rule: rule_item } => rule_name == rule_item.name(),
-                    _ => false
+                    RuleType::API {
+                        tokens_list: _,
+                        rule: rule_item,
+                    } => rule_name == rule_item.name(),
+                    _ => false,
                 });
-                
+
                 match position {
                     Some(location) => {
                         language_collection.remove(location);
                         true
                     }
-                    _ => false
+                    _ => false,
                 }
-            },
-            None => false
+            }
+            None => false,
         }
     }
-    
-    pub fn add_rule(&mut self, language: String, rules: Vec<String>, rule: Rc<dyn RuleTrait>) -> bool {
+
+    pub fn add_rule(
+        &mut self,
+        language: String,
+        rules: Vec<String>,
+        rule: Rc<dyn RuleTrait>,
+    ) -> bool {
         let mut rule_tokens = Vec::new();
-        
+
         for rule_item in rules.iter() {
             let mut session = Session::new();
             session.set_language(language.to_string());
@@ -262,19 +333,19 @@ impl SmartCalc {
             let tokens = Tokinizer::token_infos(&self.config, &session);
             rule_tokens.push(tokens);
         }
-        
+
         let language_data = match self.config.rule.get_mut(&language) {
             Some(language) => language,
-            None => return false
+            None => return false,
         };
-        
+
         language_data.push(RuleType::API {
             tokens_list: rule_tokens,
-            rule
+            rule,
         });
         true
     }
-    
+
     pub fn format_result(&self, session: &Session, result: Rc<SmartCalcAstType>) -> String {
         format_result(&self.config, session, result)
     }
@@ -288,7 +359,6 @@ impl SmartCalc {
             }
         }
     }
-
 
     pub(crate) fn execute_text(&self, session: &Session) -> ExecutionLine {
         log::debug!("> {}", session.current_line());
@@ -310,21 +380,33 @@ impl SmartCalc {
                 let ast_rc = Rc::new(ast);
 
                 match Interpreter::execute(&self.config, ast_rc, session) {
-                    Ok(ast) => Ok(ExecuteLineResult::new(self.format_result(session, ast.clone()), ast)),
-                    Err(error) => Err(error)
+                    Ok(ast) => Ok(ExecuteLineResult::new(
+                        self.format_result(session, ast.clone()),
+                        ast,
+                    )),
+                    Err(error) => Err(error),
                 }
-            },
+            }
             Err((error, _, _)) => {
                 log::debug!(" > parse Err");
                 log::info!("Syntax parse error, {}", error);
                 Err(error.to_string())
             }
         };
-        
-        Some(ExecuteLine::new(execution_result, tokinizer.ui_tokens.get_tokens(), tokinizer.tokens, tokinizer.token_infos.clone()))
+
+        Some(ExecuteLine::new(
+            execution_result,
+            tokinizer.ui_tokens.get_tokens(),
+            tokinizer.tokens,
+            tokinizer.token_infos.clone(),
+        ))
     }
 
-    pub fn execute<Tlan: Borrow<str>, Tdata: Borrow<str>>(&self, language: Tlan, data: Tdata) -> ExecuteResult {
+    pub fn execute<Tlan: Borrow<str>, Tdata: Borrow<str>>(
+        &self,
+        language: Tlan,
+        data: Tdata,
+    ) -> ExecuteResult {
         let mut session = Session::new();
 
         session.set_text(data.borrow().to_string());
@@ -337,11 +419,11 @@ impl SmartCalc {
 
         session.set_text(data.borrow().to_string());
         session.set_language("en".borrow().to_string());
-        
+
         if session.line_count() != 1 {
             return Err(anyhow!("Multiline calculation not supported"));
         }
-        
+
         if !session.has_value() {
             return Err(anyhow!("No data found"));
         }
@@ -365,15 +447,13 @@ impl SmartCalc {
                 let ast_rc = Rc::new(ast);
 
                 match Interpreter::execute(config, ast_rc, &session) {
-                    Ok(ast) => {
-                        match ast.deref() {
-                            SmartCalcAstType::Item(item) => Ok(item.get_underlying_number()),
-                            _ => Err(anyhow!("Number not found"))
-                        }
+                    Ok(ast) => match ast.deref() {
+                        SmartCalcAstType::Item(item) => Ok(item.get_underlying_number()),
+                        _ => Err(anyhow!("Number not found")),
                     },
-                    Err(error) => Err(anyhow!(error))
+                    Err(error) => Err(anyhow!(error)),
                 }
-            },
+            }
             Err((error, _, _)) => {
                 log::debug!(" > parse Err");
                 log::info!("Syntax parse error, {}", error);
@@ -402,10 +482,18 @@ impl SmartCalc {
 
 #[cfg(test)]
 mod test {
+    use alloc::{
+        collections::BTreeMap,
+        rc::Rc,
+        string::{String, ToString},
+        vec,
+    };
     use core::ops::Deref;
-    use alloc::{collections::BTreeMap, string::{String, ToString}, vec, rc::Rc};
 
-    use crate::{SmartCalc, types::{TokenType, NumberType}, RuleTrait, SmartCalcConfig};
+    use crate::{
+        types::{NumberType, TokenType},
+        RuleTrait, SmartCalc, SmartCalcConfig,
+    };
 
     #[derive(Default)]
     pub struct Test1;
@@ -413,17 +501,21 @@ mod test {
         fn name(&self) -> String {
             "test1".to_string()
         }
-        fn call(&self, _: &SmartCalcConfig, fields: &BTreeMap<String, TokenType>) -> Option<TokenType> {
+        fn call(
+            &self,
+            _: &SmartCalcConfig,
+            fields: &BTreeMap<String, TokenType>,
+        ) -> Option<TokenType> {
             match fields.get("surname") {
                 Some(TokenType::Text(surname)) => {
                     assert_eq!(surname, &"baris".to_string());
                     Some(TokenType::Number(2022.0, NumberType::Decimal))
-                },
-                _ => None
+                }
+                _ => None,
             }
-         }
+        }
     }
-    
+
     macro_rules! check_basic_rule_output {
         ($result:ident, $expected:expr) => {
             assert!($result.status);
@@ -432,12 +524,20 @@ mod test {
             match $result.lines.get(0) {
                 Some(line) => match line {
                     Some(item) => match item.calculated_tokens.get(0) {
-                        Some(calculated_token) => assert_eq!(calculated_token.token_type.borrow().deref().as_ref().unwrap(), &$expected),
-                        None => assert!(false, "Calculated token not found")
+                        Some(calculated_token) => assert_eq!(
+                            calculated_token
+                                .token_type
+                                .borrow()
+                                .deref()
+                                .as_ref()
+                                .unwrap(),
+                            &$expected
+                        ),
+                        None => assert!(false, "Calculated token not found"),
                     },
-                    None => assert!(false, "Result line does not have value")
+                    None => assert!(false, "Result line does not have value"),
                 },
-                None => assert!(false, "Result line not found")
+                None => assert!(false, "Result line not found"),
             };
         };
     }
@@ -447,31 +547,44 @@ mod test {
             assert!($result.status);
             assert_eq!($result.lines.len(), 1);
             assert_eq!($result.lines[0].is_some(), true);
-            
+
             match $result.lines.get(0) {
                 Some(line) => match line {
                     Some(item) => match item.calculated_tokens.get(0) {
-                        Some(calculated_token) => match calculated_token.token_type.borrow().deref() {
-                            Some(TokenType::DynamicType(number, item)) => {
-                                assert_eq!(*number, $expected);
-                                assert_eq!(item.deref().group_name, $type_name.to_string());
-                            },
-                            _ => assert!(false, "Expected token wrong. Token: {:?}", calculated_token.token_type.borrow().deref())
-                        },
-                        None => assert!(false, "Calculated token not found")
+                        Some(calculated_token) => {
+                            match calculated_token.token_type.borrow().deref() {
+                                Some(TokenType::DynamicType(number, item)) => {
+                                    assert_eq!(*number, $expected);
+                                    assert_eq!(item.deref().group_name, $type_name.to_string());
+                                }
+                                _ => assert!(
+                                    false,
+                                    "Expected token wrong. Token: {:?}",
+                                    calculated_token.token_type.borrow().deref()
+                                ),
+                            }
+                        }
+                        None => assert!(false, "Calculated token not found"),
                     },
-                    None => assert!(false, "Result line does not have value")
+                    None => assert!(false, "Result line does not have value"),
                 },
-                None => assert!(false, "Result line not found")
+                None => assert!(false, "Result line not found"),
             };
         };
     }
-    
+
     #[test]
-    fn add_rule_1() ->  Result<(), ()> {
+    fn add_rule_1() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Test1::default());
-        calculater.add_rule("en".to_string(), vec!["erhan {TEXT:surname}".to_string(), "{TEXT:surname} erhan".to_string()], test1.clone());
+        calculater.add_rule(
+            "en".to_string(),
+            vec![
+                "erhan {TEXT:surname}".to_string(),
+                "{TEXT:surname} erhan".to_string(),
+            ],
+            test1.clone(),
+        );
         let result = calculater.execute("en".to_string(), "erhan baris");
         check_basic_rule_output!(result, TokenType::Number(2022.0, NumberType::Decimal));
 
@@ -480,12 +593,19 @@ mod test {
 
         Ok(())
     }
-    
+
     #[test]
-    fn add_rule_2() ->  Result<(), ()> {
+    fn add_rule_2() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Test1::default());
-        calculater.add_rule("en".to_string(), vec!["erhan {TEXT:surname:baris}".to_string(), "{TEXT:surname:baris} erhan".to_string()], test1.clone());
+        calculater.add_rule(
+            "en".to_string(),
+            vec![
+                "erhan {TEXT:surname:baris}".to_string(),
+                "{TEXT:surname:baris} erhan".to_string(),
+            ],
+            test1.clone(),
+        );
         let result = calculater.execute("en".to_string(), "erhan baris");
         check_basic_rule_output!(result, TokenType::Number(2022.0, NumberType::Decimal));
 
@@ -494,35 +614,86 @@ mod test {
 
         Ok(())
     }
-    
+
     #[test]
-    fn delete_rule_2() ->  Result<(), ()> {
+    fn delete_rule_2() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Test1::default());
-        assert!(calculater.add_rule("en".to_string(), vec!["erhan {TEXT:surname:baris}".to_string(), "{TEXT:surname:baris} erhan".to_string()], test1.clone()));
+        assert!(calculater.add_rule(
+            "en".to_string(),
+            vec![
+                "erhan {TEXT:surname:baris}".to_string(),
+                "{TEXT:surname:baris} erhan".to_string()
+            ],
+            test1.clone()
+        ));
         assert!(calculater.delete_rule("en".to_string(), test1.name().clone()));
 
         Ok(())
     }
-    
+
     #[test]
-    fn delete_rule_3() ->  Result<(), ()> {
+    fn delete_rule_3() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Test1::default());
         assert!(!calculater.delete_rule("en".to_string(), test1.name().clone()));
 
         Ok(())
     }
-    
+
     #[test]
-    fn dynamic_type_1() ->  Result<(), ()> {
+    fn dynamic_type_1() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         assert!(calculater.add_dynamic_type("test1"));
-        assert!(calculater.add_dynamic_type_item("test1", 1, "{value} a", vec!["{NUMBER:value} {TEXT:type:a}"], "{value} / 2", "{value} 2", vec!["a".to_string()], None, None, None));
-        assert!(calculater.add_dynamic_type_item("test1", 2, "{value} b", vec!["{NUMBER:value} {TEXT:type:b}"], "{value} / 2", "{value} * 2", vec!["b".to_string()], None, None, None));
-        assert!(calculater.add_dynamic_type_item("test1", 3, "{value} c", vec!["{NUMBER:value} {TEXT:type:c}"], "{value} / 2", "{value} * 2", vec!["c".to_string()], None, None, None));
-        assert!(calculater.add_dynamic_type_item("test1", 4, "{value} d", vec!["{NUMBER:value} {TEXT:type:d}"], "{value}", "{value} * 2", vec!["d".to_string()], None, None, None));
-        
+        assert!(calculater.add_dynamic_type_item(
+            "test1",
+            1,
+            "{value} a",
+            vec!["{NUMBER:value} {TEXT:type:a}"],
+            "{value} / 2",
+            "{value} 2",
+            vec!["a".to_string()],
+            None,
+            None,
+            None
+        ));
+        assert!(calculater.add_dynamic_type_item(
+            "test1",
+            2,
+            "{value} b",
+            vec!["{NUMBER:value} {TEXT:type:b}"],
+            "{value} / 2",
+            "{value} * 2",
+            vec!["b".to_string()],
+            None,
+            None,
+            None
+        ));
+        assert!(calculater.add_dynamic_type_item(
+            "test1",
+            3,
+            "{value} c",
+            vec!["{NUMBER:value} {TEXT:type:c}"],
+            "{value} / 2",
+            "{value} * 2",
+            vec!["c".to_string()],
+            None,
+            None,
+            None
+        ));
+        assert!(calculater.add_dynamic_type_item(
+            "test1",
+            4,
+            "{value} d",
+            vec!["{NUMBER:value} {TEXT:type:d}"],
+            "{value}",
+            "{value} * 2",
+            vec!["d".to_string()],
+            None,
+            None,
+            None
+        ));
+
         let result = calculater.execute("en".to_string(), "10 a to b");
         check_dynamic_type_output!(result, "test1", 5.0);
 
@@ -536,79 +707,107 @@ mod test {
         check_dynamic_type_output!(result, "test1", 1.0);
         Ok(())
     }
-    
+
     #[test]
-    fn dynamic_type_2() ->  Result<(), ()> {
+    fn dynamic_type_2() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         assert!(calculater.add_dynamic_type("test1"));
         assert!(!calculater.add_dynamic_type("test1"));
-        
-        assert!(calculater.add_dynamic_type_item("test1", 1, "{value} a", vec!["{NUMBER:value} {TEXT:type:a}"], "{value} / 2", "{value} 2", vec!["a".to_string()], None, None, None));
-        assert!(!calculater.add_dynamic_type_item("test1", 1, "{value} a", vec!["{NUMBER:value} {TEXT:type:a}"], "{value} / 2", "{value} 2", vec!["a".to_string()], None, None, None));
+
+        assert!(calculater.add_dynamic_type_item(
+            "test1",
+            1,
+            "{value} a",
+            vec!["{NUMBER:value} {TEXT:type:a}"],
+            "{value} / 2",
+            "{value} 2",
+            vec!["a".to_string()],
+            None,
+            None,
+            None
+        ));
+        assert!(!calculater.add_dynamic_type_item(
+            "test1",
+            1,
+            "{value} a",
+            vec!["{NUMBER:value} {TEXT:type:a}"],
+            "{value} / 2",
+            "{value} 2",
+            vec!["a".to_string()],
+            None,
+            None,
+            None
+        ));
         Ok(())
     }
 
     #[test]
-    fn basic_test_1() ->  anyhow::Result<()> {
+    fn basic_test_1() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
         let result = SmartCalc::basic_execute("1024", &config)?;
         assert_eq!(result, 1024.0);
         Ok(())
     }
-    
+
     #[test]
-    fn basic_test_2() ->  anyhow::Result<()> {
+    fn basic_test_2() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
         let result = SmartCalc::basic_execute("1024 * 2", &config)?;
         assert_eq!(result, 2048.0);
         Ok(())
     }
-    
+
     #[test]
-    fn basic_test_3() ->  anyhow::Result<()> {
+    fn basic_test_3() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
         let error = match SmartCalc::basic_execute("a + 1024 * 2", &config) {
             Ok(_) => return Ok(()),
-            Err(error) => error
+            Err(error) => error,
         };
         assert_eq!(error.to_string(), "Number not found".to_string());
         Ok(())
     }
-    
+
     #[test]
-    fn basic_test_4() ->  anyhow::Result<()> {
+    fn basic_test_4() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
         let error = match SmartCalc::basic_execute("+ 1024 * 2", &config) {
             Ok(_) => return Ok(()),
-            Err(error) => error
+            Err(error) => error,
         };
         assert_eq!(error.to_string(), "No more token".to_string());
         Ok(())
     }
-    
+
     #[test]
-    fn basic_test_5() ->  anyhow::Result<()> {
+    fn basic_test_5() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
-        let error = match SmartCalc::basic_execute(r#"1+ 1024 * 2
-"#, &config) {
+        let error = match SmartCalc::basic_execute(
+            r#"1+ 1024 * 2
+"#,
+            &config,
+        ) {
             Ok(_) => return Ok(()),
-            Err(error) => error
+            Err(error) => error,
         };
-        assert_eq!(error.to_string(), "Multiline calculation not supported".to_string());
+        assert_eq!(
+            error.to_string(),
+            "Multiline calculation not supported".to_string()
+        );
         Ok(())
     }
-    
+
     #[test]
-    fn basic_test_6() ->  anyhow::Result<()> {
+    fn basic_test_6() -> anyhow::Result<()> {
         let config = SmartCalcConfig::default();
         let error = match SmartCalc::basic_execute(r#""#, &config) {
             Ok(_) => return Ok(()),
-            Err(error) => error
+            Err(error) => error,
         };
         assert_eq!(error.to_string(), "Calculation empty".to_string());
         Ok(())
     }
-    
+
     #[derive(Default)]
     pub struct Coin;
 
@@ -617,53 +816,90 @@ mod test {
             "Coin".to_string()
         }
 
-        fn call(&self, smartcalc: &SmartCalcConfig, fields: &BTreeMap<String, TokenType>) -> Option<TokenType> {
+        fn call(
+            &self,
+            smartcalc: &SmartCalcConfig,
+            fields: &BTreeMap<String, TokenType>,
+        ) -> Option<TokenType> {
             let count = match fields.get("count") {
                 Some(TokenType::Number(number, NumberType::Decimal)) => *number,
-                _ => return None
+                _ => return None,
             };
             let coin = match fields.get("coin") {
                 Some(TokenType::Text(text)) => text.clone(),
-                _ => return None
+                _ => return None,
             };
-            
+
             let price = match &coin[..] {
                 "btc" => 1000.0 * count,
                 "eth" => 800.0 * count,
-                _ => return None
+                _ => return None,
             };
-            
-            return Some(TokenType::Money(price, smartcalc.get_currency("usd".to_string())?));
+
+            return Some(TokenType::Money(
+                price,
+                smartcalc.get_currency("usd".to_string())?,
+            ));
         }
     }
-    
+
     #[test]
-    fn add_rule_3() ->  Result<(), ()> {
+    fn add_rule_3() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Coin::default());
-        calculater.add_rule("en".to_string(), vec!["{NUMBER:count} {TEXT:coin}".to_string()], test1.clone());
+        calculater.add_rule(
+            "en".to_string(),
+            vec!["{NUMBER:count} {TEXT:coin}".to_string()],
+            test1.clone(),
+        );
         let result = calculater.execute("en".to_string(), "10 btc to usd");
-        check_basic_rule_output!(result, TokenType::Money(10000.0, calculater.config.get_currency("usd".to_string()).unwrap()));
+        check_basic_rule_output!(
+            result,
+            TokenType::Money(
+                10000.0,
+                calculater.config.get_currency("usd".to_string()).unwrap()
+            )
+        );
         Ok(())
     }
-    
+
     #[test]
-    fn add_rule_4() ->  Result<(), ()> {
+    fn add_rule_4() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Coin::default());
-        calculater.add_rule("en".to_string(), vec!["{NUMBER:count} {TEXT:coin}".to_string()], test1.clone());
+        calculater.add_rule(
+            "en".to_string(),
+            vec!["{NUMBER:count} {TEXT:coin}".to_string()],
+            test1.clone(),
+        );
         let result = calculater.execute("en".to_string(), "10 eth to usd");
-        check_basic_rule_output!(result, TokenType::Money(8000.0, calculater.config.get_currency("usd".to_string()).unwrap()));
+        check_basic_rule_output!(
+            result,
+            TokenType::Money(
+                8000.0,
+                calculater.config.get_currency("usd".to_string()).unwrap()
+            )
+        );
         Ok(())
     }
-    
+
     #[test]
-    fn add_rule_5() ->  Result<(), ()> {
+    fn add_rule_5() -> Result<(), ()> {
         let mut calculater = SmartCalc::default();
         let test1 = Rc::new(Coin::default());
-        calculater.add_rule("en".to_string(), vec!["{NUMBER:count} {TEXT:coin}".to_string()], test1.clone());
+        calculater.add_rule(
+            "en".to_string(),
+            vec!["{NUMBER:count} {TEXT:coin}".to_string()],
+            test1.clone(),
+        );
         let result = calculater.execute("en".to_string(), "10 eth to dkk");
-        check_basic_rule_output!(result, TokenType::Money(49644.9970792, calculater.config.get_currency("dkk".to_string()).unwrap()));
+        check_basic_rule_output!(
+            result,
+            TokenType::Money(
+                49644.9970792,
+                calculater.config.get_currency("dkk".to_string()).unwrap()
+            )
+        );
         Ok(())
     }
 }

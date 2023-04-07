@@ -1,13 +1,13 @@
 [package]
 name = "smartcalc"
-description = "Text based calculator for peoples"
-version = "1.0.8"
-authors = ["Erhan BARIS <erhanbaris@gmail.com>"]
-edition = "2018"
+description = "Text based calculator for peoples supported in Tauri"
+version = "0.0.1"
+authors = ["tanvesh01 <sarvetanvesh01@gmail.com>"]
+edition = "2021"
 license = "GPL-2.0"
-repository = "https://github.com/erhanbaris/smartcalc"
-documentation = "https://github.com/erhanbaris/smartcalc"
-homepage = "https://github.com/erhanbaris/smartcalc"
+repository = "https://github.com/tanvesh01/smartcalc-tauri"
+documentation = "https://github.com/tanvesh01/smartcalc-tauri"
+homepage = "https://github.com/tanvesh01/smartcalc-tauri"
 readme = "README.md"
 keywords = ["calculator", "smartcalc"]
 categories = ["calculator", "mathematics", "science", "development-tools", "no-std"]
