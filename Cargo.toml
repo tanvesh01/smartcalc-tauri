@@ -1,5 +1,5 @@
 [package]
-name = "smartcalc"
+name = "smartcalc-tauri"
 description = "Text based calculator for peoples supported in Tauri"
 version = "0.0.1"
 authors = ["tanvesh01 <sarvetanvesh01@gmail.com>"]
