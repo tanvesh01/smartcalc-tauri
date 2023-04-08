@@ -210,6 +210,12 @@ impl PartialEq for TokenType {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct MoneyToStringOutput {
+    code: String,
+    value_with_symbol: String,
+}
+
 impl ToString for TokenType {
     fn to_string(&self) -> String {
         match &self {
@@ -239,13 +245,22 @@ impl ToString for TokenType {
             }
             TokenType::Operator(ch) => ch.to_string(),
             TokenType::Field(_) => "field".to_string(),
-            TokenType::Percent(number) => format!("%{}", number),
+            TokenType::Percent(number) => format!("{}%", number),
             TokenType::Money(price, currency) => {
+                let value_with_symbol;
                 if currency.symbol_on_left {
-                    format!("{} {}", currency.symbol.to_string(), price)
+                    value_with_symbol = format!("{} {}", currency.symbol.to_string(), price)
                 } else {
-                    format!("{} {}", price, currency.symbol.to_string())
+                    value_with_symbol = format!("{} {}", price, currency.symbol.to_string())
                 }
+
+                let money_output = MoneyToStringOutput {
+                    code: currency.code.to_string(),
+                    value_with_symbol,
+                };
+                let money_output_json = serde_json::to_string(&money_output).unwrap();
+
+                money_output_json
             }
             TokenType::Variable(var) => var.to_string(),
             TokenType::Month(month) => month.to_string(),

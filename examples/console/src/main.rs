@@ -4,9 +4,13 @@
  * Licensed under the GNU General Public License v2.0.
  */
 
-extern crate smartcalc;
+extern crate smartcalc_tauri;
 
-use smartcalc::*;
+use std::borrow::{Borrow, BorrowMut};
+use std::ops::Deref;
+
+use smartcalc_tauri::money::MoneyItem;
+use smartcalc_tauri::*;
 
 fn main() {
     use chrono::{Local, TimeZone};
@@ -27,7 +31,7 @@ fn main() {
         None => "UTC".to_string(),
     };
 
-    let test_data = r"1 usd to inr".to_string();
+    let test_data = r"today - may 8".to_string();
     let mut app = SmartCalc::default();
 
     //app.add_rule("en".to_string(), vec!["{TEXT:soyad:erhan}".to_string()], test1 as RuleFunction);
@@ -37,43 +41,46 @@ fn main() {
 
     let language = "en".to_string();
     let results = app.execute(language, test_data);
-
+    println!("Results: {:?}", results);
+    println!("0-=================================0");
+    // let tauri_result;
     for result in results.lines.iter() {
         match result {
             Some(result) => match &result.result {
                 Ok(output) => {
-                    for tokens in result.calculated_tokens.iter() {
-                        // get value from refcell token_type
-                        if tokens
-                            .token_type
-                            .borrow_mut()
-                            .as_ref()
-                            .expect("Error")
-                            .type_name()
-                            == "MONEY"
-                        {
-                            println!(
-                                "{:?} ",
-                                tokens
-                                    .token_type
-                                    .borrow_mut()
-                                    .as_ref()
-                                    .expect("Error")
-                                    .to_string()
-                            )
-                        }
-                        println!(
-                            "{:?}",
-                            tokens
-                                .token_type
-                                .borrow_mut()
-                                .as_ref()
-                                .expect("Error")
-                                .type_name()
-                        );
-                    }
+                    println!("{:?}", output);
+                    // for tokens in result.calculated_tokens.iter() {
+                    //     // get value from refcell token_type
+                    //     let some = tokens.token_type.borrow();
+                    //     // .deref();
+                    //     println!("as token => {:?}", some.as_ref().unwrap().type_name());
+                    //     println!("as REFFFFF => {:?}", some.as_ref().unwrap().to_string());
 
-                    println!("{:?}", output)
+                    //     // if tokens
+                    //     //     .token_type
+                    //     //     .borrow()
+                    //     //     .as_ref()
+                    //     //     .unwrap()
+                    //     //     .borrow_mut()
+                    //     //     .type_name()
+                    //     //     == "MONEY"
+                    //     // {
+                    //     //     println!("CHA CHING: {:?}", tokens);
+                    //     //     println!(
+                    //     //         "{:?} ",
+                    //     //         tokens.token_type.borrow_mut().as_ref().expect("Error")
+                    //     //     )
+                    //     // }
+                    //     // println!(
+                    //     //     "{:?}",
+                    //     //     tokens
+                    //     //         .token_type
+                    //     //         .borrow_mut()
+                    //     //         .as_ref()
+                    //     //         .expect("Error")
+                    //     //         .type_name()
+                    //     // );
+                    // }
                 }
                 Err(error) => println!("Error : {}", error),
             },
