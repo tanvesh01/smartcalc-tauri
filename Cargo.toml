@@ -1,7 +1,7 @@
 [package]
 name = "smartcalc-tauri"
 description = "Text based calculator for peoples supported in Tauri"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["tanvesh01 <sarvetanvesh01@gmail.com>"]
 edition = "2021"
 license = "GPL-2.0"

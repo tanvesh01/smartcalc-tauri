@@ -213,7 +213,9 @@ impl PartialEq for TokenType {
 #[derive(Serialize, Deserialize)]
 struct MoneyToStringOutput {
     code: String,
-    value_with_symbol: String,
+    value: f64,
+    symbol: String,
+    is_symbol_on_left: bool,
 }
 
 impl ToString for TokenType {
@@ -247,16 +249,11 @@ impl ToString for TokenType {
             TokenType::Field(_) => "field".to_string(),
             TokenType::Percent(number) => format!("{}%", number),
             TokenType::Money(price, currency) => {
-                let value_with_symbol;
-                if currency.symbol_on_left {
-                    value_with_symbol = format!("{} {}", currency.symbol.to_string(), price)
-                } else {
-                    value_with_symbol = format!("{} {}", price, currency.symbol.to_string())
-                }
-
                 let money_output = MoneyToStringOutput {
                     code: currency.code.to_string(),
-                    value_with_symbol,
+                    value: *price,
+                    symbol: currency.symbol.to_string(),
+                    is_symbol_on_left: currency.symbol_on_left,
                 };
                 let money_output_json = serde_json::to_string(&money_output).unwrap();
 
